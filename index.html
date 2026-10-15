@@ -39,7 +39,7 @@ thead th{color:var(--mut);font-weight:600;font-size:12px;position:sticky;top:0;b
 .wide{grid-column:1/-1}
 .box{position:relative;height:280px}
 .scroll{overflow:auto;max-height:420px}
-.det td:nth-child(-n+4),.det th:nth-child(-n+4),.det td:last-child,.det th:last-child{text-align:left}
+.det td:nth-child(-n+4),.det th:nth-child(-n+4),.det td:nth-last-child(-n+3),.det th:nth-last-child(-n+3){text-align:left}
 .det td{font-size:13px}
 .det thead th{font-size:11px}
 @media(max-width:800px){.grid{grid-template-columns:1fr}.big td{font-size:16px}}
@@ -58,6 +58,7 @@ thead th{color:var(--mut);font-weight:600;font-size:12px;position:sticky;top:0;b
 <label>UDN<select id="UDN"></select></label>
 <label>Segmento<select id="SEGMENTO"></select></label>
 <label>Status cartera<select id="Status_Cartera"></select></label>
+<label>Comercial/Ejecutivo CN<select id="NCEC"></select></label>
 <label>Año<select id="y"></select></label>
 <label>Mes<select id="m"></select></label>
 <button class="sec" id="lim">Limpiar filtros</button></div></section>
@@ -72,13 +73,13 @@ thead th{color:var(--mut);font-weight:600;font-size:12px;position:sticky;top:0;b
 </div>
 
 <section class="card" style="margin-top:14px"><h2 id="t4"></h2><div class="scroll"><table class="det">
-<thead><tr><th>Factura</th><th>Fecha</th><th>Cliente</th><th>UDN</th><th>Facturado</th><th>Pagado</th><th>Saldo</th><th>Cartera</th></tr></thead><tbody id="tb"></tbody></table></div></section>
+<thead><tr><th>Factura</th><th>Fecha</th><th>Cliente</th><th>UDN</th><th>Facturado</th><th>Pagado</th><th>Saldo</th><th>Cartera</th><th>Reloj cobranza</th><th>Bucket reloj</th></tr></thead><tbody id="tb"></tbody></table></div></section>
 </main>
 <script>
 const $=id=>document.getElementById(id),
 MES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
 COL={f:'#1F5BFF',p:'#0FA89A',s:'#FF6B00'},NM={f:'Facturado',p:'Pagado',s:'Saldo por pagar'};
-let RAW=[],F={mon:'',cli:'',UDN:'',SEGMENTO:'',Status_Cartera:'',y:0,m:undefined},timer,CH={};
+let RAW=[],F={mon:'',cli:'',UDN:'',SEGMENTO:'',Status_Cartera:'',NCEC:'',y:0,m:undefined},timer,CH={};
 const ls={g:k=>{try{return localStorage.getItem(k)}catch(e){return null}},s:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num=v=>{if(typeof v==='number')return v;const n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n};
@@ -91,15 +92,16 @@ const st=(t,e)=>{const s=$('estado');s.textContent=t;s.className=e?'err':''};
 
 function load(j){
  const c=j.columnas;
- RAW=j.filas.map(r=>{const o={};c.forEach((k,i)=>o[k]=r[i]);const f=fecha(o.fecha_de_factura);
-  Object.assign(o,{y:f.y,m:f.m,d:f.d,fac:num(o.Total_facturado),pag:num(o.PAGO_NETO),sal:num(o['Saldo X Cobrar']),mon:String(o.Moneda||'').trim().toUpperCase()||'N/D',cli:String(o.CLIENTE||'').trim()});
+ RAW=j.filas.map(r=>{const o={};c.forEach((k,i)=>o[k]=r[i]);
+  const cons=fecha(o.Mes_consumo),fac=fecha(o.fecha_de_factura); // periodo = mes de consumo; fecha de factura solo se muestra en la tabla
+  Object.assign(o,{y:cons.y,m:cons.m,d:cons.d,fd:fac.d,fm:fac.m,fy:fac.y,fac:num(o.Total_facturado),pag:num(o.PAGO_NETO),sal:num(o['Saldo X Cobrar']),mon:String(o.Moneda||'').trim().toUpperCase()||'N/D',cli:String(o.CLIENTE||'').trim(),NCEC:String(o['Nombre Comercial/Ejecutivo CN']||'').trim()});
   ['UDN','SEGMENTO','Status_Cartera'].forEach(k=>o[k]=String(o[k]||'').trim());return o}).filter(o=>o.y);
 }
 
 /* ig: 'y' = ignora año y mes · 'm' = ignora solo el mes · sin valor = año y mes */
 function sel(ig){
  const q=F.cli.toLowerCase();
- return RAW.filter(o=>o.mon===F.mon&&(!q||o.cli.toLowerCase().includes(q))&&(!F.UDN||o.UDN===F.UDN)&&(!F.SEGMENTO||o.SEGMENTO===F.SEGMENTO)&&(!F.Status_Cartera||o.Status_Cartera===F.Status_Cartera)&&(ig==='y'||o.y===F.y)&&(ig||!F.m||o.m===F.m));
+ return RAW.filter(o=>o.mon===F.mon&&(!q||o.cli.toLowerCase().includes(q))&&(!F.UDN||o.UDN===F.UDN)&&(!F.SEGMENTO||o.SEGMENTO===F.SEGMENTO)&&(!F.Status_Cartera||o.Status_Cartera===F.Status_Cartera)&&(!F.NCEC||o.NCEC===F.NCEC)&&(ig==='y'||o.y===F.y)&&(ig||!F.m||o.m===F.m));
 }
 
 function build(){
@@ -111,8 +113,8 @@ function build(){
  if(!ys.includes(F.y))F.y=ys[0]||0;
  if(F.m===undefined)F.m=RAW.reduce((a,o)=>o.y===F.y&&o.mon===F.mon&&o.m>a?o.m:a,0);
  const op=(id,vals,cur,all)=>{$(id).innerHTML=(all?`<option value="">${all}</option>`:'')+vals.map(v=>`<option value="${esc(v)}"${String(v)===String(cur)?' selected':''}>${esc(v)}</option>`).join('')};
- op('UDN',uniq('UDN'),F.UDN,'Todas');op('SEGMENTO',uniq('SEGMENTO'),F.SEGMENTO,'Todos');op('Status_Cartera',uniq('Status_Cartera'),F.Status_Cartera,'Todos');op('y',ys,F.y);
- ['UDN','SEGMENTO','Status_Cartera'].forEach(k=>F[k]=$(k).value);
+ op('UDN',uniq('UDN'),F.UDN,'Todas');op('SEGMENTO',uniq('SEGMENTO'),F.SEGMENTO,'Todos');op('Status_Cartera',uniq('Status_Cartera'),F.Status_Cartera,'Todos');op('NCEC',uniq('NCEC'),F.NCEC,'Todos');op('y',ys,F.y);
+ ['UDN','SEGMENTO','Status_Cartera','NCEC'].forEach(k=>F[k]=$(k).value);
  $('m').innerHTML='<option value="0">Todos</option>'+MES.map((n,i)=>`<option value="${i+1}"${F.m===i+1?' selected':''}>${n}</option>`).join('');
  $('clis').innerHTML=uniq('cli').map(c=>`<option value="${esc(c)}">`).join('');
  render();
@@ -136,7 +138,7 @@ function render(){
 
  const L=sel().sort((a,b)=>b.sal-a.sal);
  $('t4').textContent=`Facturas de ${per||'año '+F.y} (${L.length}${L.length>100?'; se muestran las 100 con mayor saldo':''})`;
- $('tb').innerHTML=L.slice(0,100).map(o=>`<tr><td>${esc(o.no_factura)}</td><td>${o.d}/${o.m}/${o.y}</td><td>${esc(o.cli)}</td><td>${esc(o.UDN)}</td><td>${money(o.fac)}</td><td>${money(o.pag)}</td><td>${money(o.sal)}</td><td>${esc(o.Status_Cartera)}</td></tr>`).join('')||'<tr><td colspan="8">No hay facturas con estos filtros.</td></tr>';
+ $('tb').innerHTML=L.slice(0,100).map(o=>`<tr><td>${esc(o.no_factura)}</td><td>${o.fd}/${o.fm}/${o.fy}</td><td>${esc(o.cli)}</td><td>${esc(o.UDN)}</td><td>${money(o.fac)}</td><td>${money(o.pag)}</td><td>${money(o.sal)}</td><td>${esc(o.Status_Cartera)}</td><td>${esc(o.RELOJ_COBRANZA_SISTEMA)}</td><td>${esc(o.Bucket_reloj)}</td></tr>`).join('')||'<tr><td colspan="10">No hay facturas con estos filtros.</td></tr>';
 
  if(typeof Chart==='undefined'){$('t1').textContent='No se pudo cargar la librería de gráficas (revisa tu conexión a internet).';return}
  const M=Array.from({length:12},()=>({f:0,p:0,s:0}));
@@ -166,11 +168,11 @@ async function cargar(){
 function prog(){clearInterval(timer);const n=+$('int').value;ls.s('int',n);if(n)timer=setInterval(cargar,n*6e4)}
 
 $('mon').onclick=e=>{if(e.target.dataset.m){F.mon=e.target.dataset.m;build()}};
-['UDN','SEGMENTO','Status_Cartera'].forEach(k=>$(k).onchange=e=>{F[k]=e.target.value;render()});
+['UDN','SEGMENTO','Status_Cartera','NCEC'].forEach(k=>$(k).onchange=e=>{F[k]=e.target.value;render()});
 $('cli').oninput=e=>{F.cli=e.target.value.trim();render()};
 $('y').onchange=e=>{F.y=+e.target.value;render()};
 $('m').onchange=e=>{F.m=+e.target.value;render()};
-$('lim').onclick=()=>{Object.assign(F,{cli:'',UDN:'',SEGMENTO:'',Status_Cartera:''});$('cli').value='';build()};
+$('lim').onclick=()=>{Object.assign(F,{cli:'',UDN:'',SEGMENTO:'',Status_Cartera:'',NCEC:''});$('cli').value='';build()};
 $('upd').onclick=cargar;
 $('url').onkeydown=e=>{if(e.key==='Enter')cargar()};
 $('int').onchange=prog;
